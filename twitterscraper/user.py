@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 
 class User:
     def __init__(self, user=None, full_name="", location="", blog="", date_joined=None, id=None, tweets=0, 
-        following=0, followers=0, likes=0, lists=0):
+        following=0, followers=0, likes=0, lists=0, bio=""):
         self.user = user
         self.full_name = full_name
         self.location = location
@@ -15,6 +15,7 @@ class User:
         self.followers = followers
         self.likes = likes
         self.lists = lists
+        self.bio = bio
         
 
     def from_soup(self, tag_prof_header, tag_prof_nav):
@@ -83,6 +84,9 @@ class User:
         else:    
             lists = lists.find('span', {'class':"ProfileNav-value"}).text    
             self.lists = int(lists)
+        bio = tag_prof_header.find('p', {'class':'ProfileHeaderCard-bio u-dir'})
+        if bio:
+            self.bio = bio.text
         return(self)
 
 
