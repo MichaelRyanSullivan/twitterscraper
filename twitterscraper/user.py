@@ -1,9 +1,15 @@
 from bs4 import BeautifulSoup
+import requests
+from query import HEADERS_LIST
+from query import HEADER
 
+from selenium import webdriver
+import time
+from selenium.webdriver.chrome.options import Options
 
 class User:
     def __init__(self, user=None, full_name="", location="", blog="", date_joined=None, id=None, tweets=0, 
-        following=0, followers=0, likes=0, lists=0, bio=""):
+        following=0, followers=0, likes=0, lists=0, bio="", follower_list = [], following_list = []):
         self.user = user
         self.full_name = full_name
         self.location = location
@@ -16,6 +22,8 @@ class User:
         self.likes = likes
         self.lists = lists
         self.bio = bio
+        self.follower_list = follower_list
+        self.following_list = following_list
         
 
     def from_soup(self, tag_prof_header, tag_prof_nav):
@@ -28,6 +36,10 @@ class User:
         """
 
         self.user= tag_prof_header.find('a', {'class':'ProfileHeaderCard-nameLink u-textInheritColor js-nav'})['href'].strip("/") 
+        
+        self.follower_list, self.following_list = self.fetch_followers_and_following()
+        
+        
         self.full_name = tag_prof_header.find('a', {'class':'ProfileHeaderCard-nameLink u-textInheritColor js-nav'}).text
         
         location = tag_prof_header.find('span', {'class':'ProfileHeaderCard-locationText u-dir'}) 
@@ -84,11 +96,96 @@ class User:
         else:    
             lists = lists.find('span', {'class':"ProfileNav-value"}).text    
             self.lists = int(lists)
+        
+        # Fetch user bio
         bio = tag_prof_header.find('p', {'class':'ProfileHeaderCard-bio u-dir'})
         if bio:
             self.bio = bio.text
+                
         return(self)
+    
+    # intialize driver and log in to Twitter
+    def initialize_driver(self, disable_gpu=True):
+        options = Options()
+        if disable_gpu:
+            options.add_argument('--headless')
+            options.add_argument('--disable-gpu')
+        
+        # create new Chrome session
+        driver = webdriver.Chrome(chrome_options=options)
+        
+        # navigate to the application home page
+        driver.get("https://twitter.com/login")
 
+
+        # get the username textbox
+        login_field = driver.find_element_by_class_name("js-username-field")
+        login_field.clear()
+
+        # enter username
+        login_field.send_keys("Michael90482875")
+        #time.sleep(1)
+
+        #get the password textbox
+        password_field = driver.find_element_by_class_name("js-password-field")
+        password_field.clear()
+
+        #enter password
+        password_field.send_keys("Iam4IRISH11")
+        #time.sleep(1)
+        password_field.submit()
+        return driver
+
+    # helper to scroll to the bottom of an infinite scroll
+    def scroll_to_end(self, driver):
+        SCROLL_PAUSE_TIME = 0.5
+        last_height = driver.execute_script("return document.body.scrollHeight")
+        while True:
+            # Scroll down to bottom
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+
+            # Wait to load page
+            time.sleep(SCROLL_PAUSE_TIME)
+
+            # Calculate new scroll height, compare with last scroll height
+            new_height = driver.execute_script("return document.body.scrollHeight")
+            if new_height == last_height:
+                break
+            last_height = new_height
+        return
+
+    # Assumes user param of self has already been set.
+    # returns: followers_list (list of user names, strings)
+    #          following_list (list of user names, strings)
+    def fetch_followers_and_following(self):
+        if self.user == None:
+            return [], []
+        driver = self.initialize_driver()
+
+        # generate followers
+        url = "https://twitter.com/{}/followers".format(self.user)
+        followers = self.list_from_url(driver, url)
+        url = "https://twitter.com/{}/following".format(self.user)
+        following = self.list_from_url(driver, url)
+
+        return followers, following
+
+    def list_from_url(self, driver, url):
+        res = []
+        driver.get(url)
+        
+        # make sure all elements are revealed by scrolling to end
+        self.scroll_to_end(driver)
+
+        soup = BeautifulSoup(driver.page_source, 'lxml')
+        user_tag_list = soup.find_all("b", {"class", "u-linkComplete-target"})
+
+        # turn HTML into username
+        for user_tag in user_tag_list:
+            if user_tag == self.user:
+                continue
+            res.append(user_tag.contents)
+        return res
 
     def from_html(self, html):
         soup = BeautifulSoup(html, "lxml")
