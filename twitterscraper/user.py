@@ -1,7 +1,5 @@
 from bs4 import BeautifulSoup
 import requests
-from query import HEADERS_LIST
-from query import HEADER
 
 from selenium import webdriver
 import time
@@ -26,7 +24,7 @@ class User:
         self.following_list = following_list
         
 
-    def from_soup(self, tag_prof_header, tag_prof_nav):
+    def from_soup(self, tag_prof_header, tag_prof_nav, get_friends):
         """
         Returns the scraped user data from a twitter user page.
 
@@ -37,7 +35,8 @@ class User:
 
         self.user= tag_prof_header.find('a', {'class':'ProfileHeaderCard-nameLink u-textInheritColor js-nav'})['href'].strip("/") 
         
-        self.follower_list, self.following_list = self.fetch_followers_and_following()
+        if get_friends:
+            self.follower_list, self.following_list = self.fetch_followers_and_following()
         
         
         self.full_name = tag_prof_header.find('a', {'class':'ProfileHeaderCard-nameLink u-textInheritColor js-nav'}).text
@@ -138,8 +137,10 @@ class User:
 
     # helper to scroll to the bottom of an infinite scroll
     def scroll_to_end(self, driver):
-        SCROLL_PAUSE_TIME = 0.5
+        SCROLL_PAUSE_TIME = 0.1
+        NUM_RETRIES= 4
         last_height = driver.execute_script("return document.body.scrollHeight")
+        retries = NUM_RETRIES
         while True:
             # Scroll down to bottom
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -150,7 +151,12 @@ class User:
             # Calculate new scroll height, compare with last scroll height
             new_height = driver.execute_script("return document.body.scrollHeight")
             if new_height == last_height:
-                break
+                if retries == 0:
+                    break
+                else:
+                    retries -= 1
+                    continue
+            retries = NUM_RETRIES
             last_height = new_height
         return
 
@@ -160,7 +166,7 @@ class User:
     def fetch_followers_and_following(self):
         if self.user == None:
             return [], []
-        driver = self.initialize_driver()
+        driver = self.initialize_driver(False)
 
         # generate followers
         url = "https://twitter.com/{}/followers".format(self.user)
@@ -187,13 +193,13 @@ class User:
             res.append(user_tag.contents)
         return res
 
-    def from_html(self, html):
+    def from_html(self, html, get_friends=True):
         soup = BeautifulSoup(html, "lxml")
         user_profile_header = soup.find("div", {"class":'ProfileHeaderCard'})
         user_profile_canopy = soup.find("div", {"class":'ProfileCanopy-nav'})
         if user_profile_header and user_profile_canopy:
             try:
-                return self.from_soup(user_profile_header, user_profile_canopy)
+                return self.from_soup(user_profile_header, user_profile_canopy, get_friends)
             except AttributeError:
                 pass  # Incomplete info? Discard!
             except TypeError:
